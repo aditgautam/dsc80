@@ -25,6 +25,8 @@ pio.templates["dsc80"] = go.layout.Template(
     )
 )
 pio.templates.default = "simple_white+dsc80"
+import warnings
+warnings.filterwarnings("ignore")
 
 
 # ---------------------------------------------------------------------
@@ -41,8 +43,10 @@ def clean_loans(loans):
 # ---------------------------------------------------------------------
 
 
+
 def correlations(df, pairs):
     ...
+
 
 
 # ---------------------------------------------------------------------

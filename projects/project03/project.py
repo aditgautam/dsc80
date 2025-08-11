@@ -57,7 +57,6 @@ class UniformLM(object):
 class UnigramLM(object):
     
     def __init__(self, tokens):
-
         self.mdl = self.train(tokens)
     
     def train(self, tokens):
@@ -99,16 +98,6 @@ class NGramLM(object):
         ...
         
     def train(self, ngrams):
-        # N-Gram counts C(w_1, ..., w_n)
-        ...
-        
-        # (N-1)-Gram counts C(w_1, ..., w_(n-1))
-        ...
-
-        # Create the conditional probabilities
-        ...
-        
-        # Put it all together
         ...
     
     def probability(self, words):
@@ -116,8 +105,4 @@ class NGramLM(object):
     
 
     def sample(self, M):
-        # Use a helper function to generate sample tokens of length `length`
-        ...
-        
-        # Transform the tokens to strings
         ...
