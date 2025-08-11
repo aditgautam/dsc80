@@ -6,7 +6,7 @@ import sys
 questions = sys.argv[1:]
 
 
-valid_ids = ['q1', 'q2', 'q3', 'q4']
+valid_ids = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'q10', 'q11', 'q12', 'q13']
 break_flag = False
 invalid_ids = []
 for question in questions:
@@ -27,217 +27,81 @@ grader = otter.Notebook("project.ipynb")
 import pandas as pd
 import numpy as np
 from pathlib import Path
-import json
-import re
 
-###
-from collections import deque
-from shapely.geometry import Point
-###
-
-import plotly.io as pio
 import plotly.express as px
-import plotly.graph_objects as go
-pd.options.plotting.backend = 'plotly'
-
-from IPython.display import display
-
-def plot_histogram_with_mean_line(data, nbins=10, title="Interval Distribution"):
-    mean_interval = data.mean()
-    fig = px.histogram(data, nbins=nbins, title=title)
-    fig.update_layout(bargap=0.1)
-    fig.add_trace(go.Scatter(
-        x=[None], y=[None],
-        mode='lines',line=dict(color='Red', width=2),
-        showlegend=True, name='Mean Interval Length'
-    ))
-    fig.update_layout(
-        title=title,
-        xaxis_title='Interval Length (Minutes)',
-        yaxis_title='Count',
-        shapes=[dict(type='line', x0=mean_interval,
-                y0=0, x1=mean_interval,
-                y1=50, line=dict(color='Red', width=2))])
-    return fig
-
-import warnings
-warnings.filterwarnings("ignore")
+import plotly.io as pio
+pio.renderers.default = "plotly_mimetype+notebook"
 
 from project import *
 
-schedule = pd.read_csv('data/schedule.csv')
-schedule.head()
-
-stops = pd.read_csv('data/stations.csv')
-stops.head()
-
-trips = pd.read_csv('data/routes.csv')
-trips.head()
-
-# Load the shapefile for San Diego city boundary
-san_diego_boundary_path = 'data/data_city/data_city.shp'
-san_diego_city_bounds = gpd.read_file(san_diego_boundary_path)
-
-# Ensure the coordinate reference system is correct
-san_diego_city_bounds = san_diego_city_bounds.to_crs("EPSG:4326")
-
-# Extract the coordinates from the geometry
-san_diego_city_bounds['lon'] = san_diego_city_bounds.geometry.apply(lambda x: x.centroid.x)
-san_diego_city_bounds['lat'] = san_diego_city_bounds.geometry.apply(lambda x: x.centroid.y)
-
-# Plot using Plotly
-fig = go.Figure()
-
-# Add city boundary
-fig.add_trace(go.Choroplethmapbox(
-    geojson=san_diego_city_bounds.__geo_interface__,
-    locations=san_diego_city_bounds.index,
-    z=[1] * len(san_diego_city_bounds),
-    colorscale="Greys",
-    showscale=False,
-    marker_opacity=0.5,
-    marker_line_width=1,
-))
-
-# Update layout
-fig.update_layout(
-    mapbox=dict(
-        style="carto-positron",
-        center={"lat": san_diego_city_bounds['lat'].mean(), "lon": san_diego_city_bounds['lon'].mean()},
-        zoom=10,
-    ),
-    margin={"r":0,"t":0,"l":0,"b":0}
-)
-
-# fig.show()
-
-
-# don't change this cell, but do run it -- it is needed for the tests
-unique_route_ids = ["201", "202", "30", "35", "43", "44", "105", "31", "5", "10"]
-output_preprocessing = create_detailed_schedule(schedule, stops, trips, unique_route_ids)
-fig = visualize_bus_network(output_preprocessing)
-fig_json = fig.to_json()
-fig_data = json.loads(fig_json)
-# fig.show()
-
-# hidden test setup
-unique_route_ids = [ "105", "DNE", "31", "202"]
-prep_2 = create_detailed_schedule(schedule, stops, trips, unique_route_ids)
+grades_fp = Path('data') / 'grades.csv'
+grades = pd.read_csv(grades_fp)
+grades.head()
 
 if 'q1' in questions or questions == [] or 'all' in questions:
     print(grader.check("q1"))
 
-# don't change this cell, but do run it -- it is needed for the tests
-unique_route_ids = ["201", "202", "30", "35", "43", "44", "105", "31", "5", "10"]
-detailed_schedule = create_detailed_schedule(schedule, stops, trips, unique_route_ids)
-# public test setup
-neighbors_output_na = find_neighbors("Nonexistent Station", detailed_schedule)
-neighbors_output = find_neighbors("La Jolla Village Dr & Lebon Dr", detailed_schedule)
-bfs_output = bfs("Gilman Dr & Eucalyptus Grove Ln", "UTC Transit Center", detailed_schedule)
-# hidden test setup
-neighbors_hidden = find_neighbors("UTC Transit Center", detailed_schedule)
-neighbors_hidden2 = find_neighbors("Pacific Hwy & Enterprise St", detailed_schedule)
-bfs_hidden = bfs("Gilman Dr & Eucalyptus Grove Ln", "Nobel Dr & La Jolla Village Square Drwy", detailed_schedule)
-
-bfs_output
-
-def shortest_path_visualization(route_points_sorted):
-
-    geometry = [Point(xy) for xy in zip(route_points_sorted['stop_lon'], route_points_sorted['stop_lat'])]
-    stops_gdf = gpd.GeoDataFrame(route_points_sorted, geometry=geometry)
-    stops_gdf.crs = "EPSG:4326"
-
-    san_diego_boundary_path = 'data/data_city/data_city.shp'
-    san_diego_city_bounds = gpd.read_file(san_diego_boundary_path)
-    san_diego_city_bounds = san_diego_city_bounds.to_crs("EPSG:4326")
-
-
-    # Plot city boundary using Plotly
-    fig = go.Figure()
-
-    fig.add_trace(go.Choroplethmapbox(
-        geojson=san_diego_city_bounds.__geo_interface__,
-        locations=san_diego_city_bounds.index,
-        z=[1] * len(san_diego_city_bounds),
-        colorscale="Greys",
-        showscale=False,
-        marker_opacity=0.5,
-        marker_line_width=1,
-    ))
-
-    center_lat = route_points_sorted['stop_lat'].mean()
-    center_lon = route_points_sorted['stop_lon'].mean()
-
-    # Add bus stops of shortest path
-    fig.add_trace(go.Scattermapbox(
-        lat=route_points_sorted['stop_lat'],
-        lon=route_points_sorted['stop_lon'],
-        mode='markers',
-        marker=go.scattermapbox.Marker(
-            size=12,
-            color='red',
-            opacity=0.7
-        ),
-        name="Shortest Path",
-        text=route_points_sorted['stop_name']
-    ))
-
-    fig.update_layout(
-        mapbox=dict(
-            style="carto-positron",
-            zoom=14,
-            center=dict(lat=center_lat, lon=center_lon),
-        ),
-        legend_title_text='Bus Lines',
-        margin={"r":0,"t":0,"l":0,"b":0}
-    )
-
-    return fig
-
-shortest_path_visualization(bfs_output)
-
 if 'q2' in questions or questions == [] or 'all' in questions:
     print(grader.check("q2"))
-
-bus_distribution = simulate_bus_arrivals(10)
-bus_distribution.head()
-
-data = simulate_bus_arrivals(10)['Interval'] 
-plot_histogram_with_mean_line(data).show()
 
 if 'q3' in questions or questions == [] or 'all' in questions:
     print(grader.check("q3"))
 
-# don't change this cell, but do run it -- it is needed for the tests
-passenger_wait_times_df = simulate_wait_times(simulate_bus_arrivals(10), 1000) 
-passenger_wait_times_df.head()
-
-# don't change this cell, but do run it -- it is needed for the tests
-wait_times_df = simulate_wait_times(simulate_bus_arrivals(10), 2000)
-fig_q4 = visualize_wait_times(wait_times_df, pd.Timestamp('13:00:00'))
-visualize_wait_times_fig = fig_q4.data
-fig_q4
-
-# Test Cases
-passenger_wait_times_df
-
 if 'q4' in questions or questions == [] or 'all' in questions:
     print(grader.check("q4"))
 
-arrivals = pd.read_csv('data/arrivals.csv')
-arrivals.head()
+if 'q5' in questions or questions == [] or 'all' in questions:
+    print(grader.check("q5"))
 
-arrivals["Interval"] = (pd.to_datetime(arrivals['Arrival Time'], format='%H:%M:%S').dt.hour * 60 + 
-                        pd.to_datetime(arrivals['Arrival Time'], format='%H:%M:%S').dt.minute + 
-                        pd.to_datetime(arrivals['Arrival Time'], format='%H:%M:%S').dt.second / 60).sort_values().diff()
+if 'q6' in questions or questions == [] or 'all' in questions:
+    print(grader.check("q6"))
 
-plot_histogram_with_mean_line(arrivals['Interval'] ).show()
+if 'q7' in questions or questions == [] or 'all' in questions:
+    print(grader.check("q7"))
 
-wait_times = simulate_wait_times(arrivals, 1000)  # wait time of random passengers arriving to real bus data
-passenger_wait_times = wait_times['Wait Time'].mean()
-average_bus_arrival_times = arrivals["Interval"].mean()
+final_breakdown_fp = Path('data') / 'final_exam_breakdown.csv'
+final_breakdown = pd.read_csv(final_breakdown_fp)
+final_breakdown.head()
 
-print('Average Passenger Wait Time: ' + str(passenger_wait_times))
-print('Average Bus Arrival Interval Length: ' + str(average_bus_arrival_times))
+final_breakdown.shape
+
+grades.loc[grades['PID'] == 'A99381181', 'Final']
+
+if 'q8' in questions or questions == [] or 'all' in questions:
+    print(grader.check("q8"))
+
+grades_combined = combine_grades(grades, raw_redemption(final_breakdown, [1, 2, 3, 7, 9, 12]))
+grades_combined.head()
+
+if 'q9' in questions or questions == [] or 'all' in questions:
+    print(grader.check("q9"))
+
+if 'q10' in questions or questions == [] or 'all' in questions:
+    print(grader.check("q10"))
+
+grades_analysis = grades_combined.assign(**{
+    'Total Points Pre-Redemption': total_points(grades_combined),
+    'Letter Grade Pre-Redemption': final_grades(total_points(grades_combined)),
+    'Total Points Post-Redemption': total_points_post_redemption(grades_combined),
+    'Letter Grade Post-Redemption': final_grades(total_points_post_redemption(grades_combined))
+})
+grades_analysis.head()
+
+grades_analysis['Section'].nunique()
+
+grades_analysis['Section'].unique()
+
+if 'q11' in questions or questions == [] or 'all' in questions:
+    print(grader.check("q11"))
+
+if 'q12' in questions or questions == [] or 'all' in questions:
+    print(grader.check("q12"))
+
+# Run this cell to see the result, and don't change this cell --- it is needed for the tests.
+fig = letter_grade_heat_map(grades_analysis)
+# fig.show()
+
+if 'q13' in questions or questions == [] or 'all' in questions:
+    print(grader.check("q13"))
 
 
