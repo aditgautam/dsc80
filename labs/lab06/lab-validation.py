@@ -33,6 +33,8 @@ import requests
 import bs4
 import lxml
 
+#!pip install lxml
+
 # Don't delete this cell!
 question1()
 
