@@ -126,7 +126,7 @@ def make_mcar(data, col, pct=0.5):
     """Create MCAR from complete data"""
     missing = data.copy()
     idx = data.sample(frac=pct, replace=False).index
-    missing.loc[idx, col] = np.NaN
+    missing.loc[idx, col] = np.nan
     return missing
 
 
@@ -141,7 +141,7 @@ def make_mar_on_cat(data, col, dep_col, pct=0.5):
     high_val = np.random.choice(missing[dep_col].unique())
     weights = missing[dep_col].apply(lambda x: 0.9 if x == high_val else 0.1)
     idx = data.sample(frac=pct, replace=False, weights=weights).index
-    missing.loc[idx, col] = np.NaN
+    missing.loc[idx, col] = np.nan
 
     return missing
 
@@ -164,5 +164,5 @@ def make_mar_on_num(data, col, dep_col, pct=0.5):
     weights = missing[dep_col].apply(blank_above_middle)
     idx = missing.sample(frac=pct, replace=False, weights=weights).index
 
-    missing.loc[idx, col] = np.NaN
+    missing.loc[idx, col] = np.nan
     return missing
