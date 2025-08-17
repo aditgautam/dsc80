@@ -13,8 +13,27 @@ import plotly.express as px
 # ---------------------------------------------------------------------
 
 
-def get_assignment_names(grades):
-    ...
+def get_assignment_names(grades: pd.DataFrame):
+    assignment_types = ['lab', 'project', 'midterm', 'final', 'disc', 'checkpoint']
+    out = {t: [] for t in assignment_types}
+
+    for col in grades.columns:
+        col_clean = col.strip()
+        low = col_clean.lower()
+
+        for t in assignment_types:
+            if t == 'final':
+                if low == 'final':
+                    out[t].append(col_clean)
+            else:
+                if low.startswith(t):
+                    out[t].append(col_clean)
+
+    for t in assignment_types:
+        out[t].sort()
+
+    return out
+
 
 
 # ---------------------------------------------------------------------
