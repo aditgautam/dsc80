@@ -6,6 +6,8 @@ Usage:
 
 from dsc80_utils import *
 """
+
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -19,7 +21,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import plotly.io as pio
-pio.renderers.default = "notebook"
 
 # DSC 80 preferred styles
 pio.templates["dsc80"] = go.layout.Template(
@@ -73,15 +74,3 @@ def dfs_side_by_side(*dfs):
     """
         )
     )
-
-from pathlib import Path
-
-# Used for plotting examples.
-def create_kde_plotly(df, group_col, group1, group2, vals_col, title=''):
-    fig = ff.create_distplot(
-        hist_data=[df.loc[df[group_col] == group1, vals_col], df.loc[df[group_col] == group2, vals_col]],
-        group_labels=[group1, group2],
-        show_rug=False, show_hist=False,
-        colors=['#ef553b', '#636efb'],
-    )
-    return fig.update_layout(title=title)
