@@ -14,25 +14,37 @@ import plotly.express as px
 
 
 def get_assignment_names(grades: pd.DataFrame):
-    assignment_types = ['lab', 'project', 'midterm', 'final', 'disc', 'checkpoint']
-    out = {t: [] for t in assignment_types}
+    base = pd.Index(grades.columns).str.split(' - ', n=1).str[0]
+    uniq = pd.Series(base.unique())
 
-    for col in grades.columns:
-        col_clean = col.strip()
-        low = col_clean.lower()
+    def last2_isdigits(s: pd.Series) -> pd.Series:
+        return s.str[-2:].str.isnumeric()
 
-        for t in assignment_types:
-            if t == 'final':
-                if low == 'final':
-                    out[t].append(col_clean)
-            else:
-                if low.startswith(t):
-                    out[t].append(col_clean)
+    labs = uniq[uniq.str.startswith('lab') &
+                (uniq.str.len() == 5) &
+                last2_isdigits(uniq)].tolist()
 
-    for t in assignment_types:
-        out[t].sort()
+    discs = uniq[uniq.str.startswith('discussion') &
+                 (uniq.str.len() == len('discussion') + 2) &
+                 last2_isdigits(uniq)].tolist()
 
-    return out
+    checkpoints = uniq[uniq.str.startswith('project') &
+                       (uniq.str.find('_checkpoint') >= 0)].tolist()
+
+    projects = uniq[uniq.str.startswith('project') &
+                    (uniq.str.find('_checkpoint') == -1)].tolist()
+
+    midterm = uniq[uniq == 'Midterm'].tolist()
+    final   = uniq[uniq == 'Final'].tolist()
+
+    return {
+        'lab':        sorted(labs),
+        'project':    sorted(projects),
+        'midterm':    sorted(midterm),
+        'final':      sorted(final),
+        'disc':       sorted(discs),
+        'checkpoint': sorted(checkpoints),
+    }
 
 
 
@@ -80,16 +92,19 @@ def projects_total(grades: pd.DataFrame) -> pd.Series:
 
 
 def lateness_penalty(col: pd.Series) -> pd.Series:
-    lateness_td = pd.to_timedelta(col, errors='coerce')
-    lateness_hours = lateness_td.dt.total_seconds() / 3600.0
-    penalty = pd.Series(1.0, index=col.index)
+    td = pd.to_timedelta(col, errors='coerce')
+    hrs = td.dt.total_seconds().div(3600)
 
-    penalty.loc[(lateness_hours > 2) & (lateness_hours <= 24)] = 0.9
-    
-    penalty.loc[(lateness_hours > 24) & (lateness_hours <= 336)] = 0.7
-    
-    penalty.loc[lateness_hours > 336] = 0.4
-    
+    hrs = hrs.fillna(0).clip(lower=0)
+
+    penalty = pd.Series(1.0, index=col.index, dtype=float)
+
+    penalty.loc[(hrs > 2) & (hrs <= 24*7)] = 0.9
+
+    penalty.loc[(hrs > 24*7) & (hrs <= 24*14)] = 0.7
+
+    penalty.loc[hrs > 24*14] = 0.4
+
     return penalty
 
 
@@ -280,46 +295,41 @@ def z_score(ser: pd.Series) -> pd.Series:
     mu = x.mean(skipna=True)
     sd = x.std(ddof=0, skipna=True)
     if sd == 0 or np.isnan(sd):
-        return x.where(x.isna(), 0.0)
+        return x.apply(lambda v: np.nan if pd.isna(v) else 0.0)
     return (x - mu) / sd
-    
+
 def add_post_redemption(grades_combined: pd.DataFrame) -> pd.DataFrame:
     out = grades_combined.copy()
+    
+    midterm_max = pd.to_numeric(out['Midterm - Max Points'], errors='coerce')
+    midterm_score = pd.to_numeric(out['Midterm'], errors='coerce')
+    pre_redemption_proportions = (midterm_score / midterm_max).replace(
+        [np.inf, -np.inf], np.nan
+    )
+    out['Midterm Score Pre-Redemption'] = pre_redemption_proportions
+    
+    redemption_scores = out['Raw Redemption Score']
+    redemption_z_scores = z_score(redemption_scores)
+    midterm_proportions_for_z = pre_redemption_proportions.fillna(0)
+    midterm_z_scores = z_score(midterm_proportions_for_z)
+    
+    midterm_mean = midterm_proportions_for_z.mean()
+    midterm_std = midterm_proportions_for_z.std(ddof=0)
+    
+    new_midterm_proportions = pre_redemption_proportions.copy()
 
-    names = get_assignment_names(grades_combined)
-    midterm_col = next((c for c in names["midterm"] if " - " not in c), None)
-    if midterm_col is None:
-        out["Midterm Score Pre-Redemption"]  = np.nan
-        out["Midterm Score Post-Redemption"] = np.nan
-        return out
-
-    max_col = f"{midterm_col} - Max Points"
-
-    midterm_earned = pd.to_numeric(out[midterm_col], errors="coerce")
-    midterm_max    = pd.to_numeric(out[max_col], errors="coerce")
-    midterm_prop   = (midterm_earned / midterm_max).replace([np.inf, -np.inf], np.nan)
-
-    out["Midterm Score Pre-Redemption"] = midterm_prop
-
-    midterm_prop_filled = midterm_prop.fillna(0.0)
-    z_midterm    = z_score(midterm_prop_filled)
-    z_redemption = z_score(out["Raw Redemption Score"])
-
-    valid_mid = midterm_prop.dropna()
-    mu_m = valid_mid.mean()
-    sd_m = valid_mid.std(ddof=0)
-
-    improved = z_redemption > z_midterm
-    replacement = z_redemption * sd_m + mu_m
-
-    post = midterm_prop.copy()
-    post[improved] = replacement[improved]
-
-    # cap to [0, 1]
-    out["Midterm Score Post-Redemption"] = post.clip(0, 1)
-
+    improved_students = redemption_z_scores > midterm_z_scores
+    
+    new_scores_z = redemption_z_scores[improved_students]
+    new_scores = new_scores_z * midterm_std + midterm_mean
+    
+    new_midterm_proportions.loc[improved_students] = new_scores
+    
+    new_midterm_proportions = new_midterm_proportions.fillna(0)
+    
+    out['Midterm Score Post-Redemption'] = new_midterm_proportions.clip(upper=1.0)
+    
     return out
-
 
 # ---------------------------------------------------------------------
 # QUESTION 10
