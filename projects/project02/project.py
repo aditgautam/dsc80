@@ -45,6 +45,7 @@ def clean_loans(loans: pd.DataFrame):
     
     cleaned["emp_title"] = emp
     cleaned["term_end"] = cleaned["issue_d"] + cleaned["term"].map(lambda m: pd.DateOffset(months=int(m)))
+    cleaned["term_end"] = pd.to_datetime(cleaned["term_end"])
     return cleaned
 
 
@@ -84,7 +85,11 @@ def create_boxplot(loans: pd.DataFrame):
             "term": "Loan Length (Months)"
         },
         title="Interest Rate vs. Credit Score",
-        color_discrete_map={36: "purple", 60: "gold"}
+        color_discrete_map={36: "purple", 60: "gold"},
+        category_orders={
+            "score_bin": labels,
+            "term": [36, 60],
+        },
     )
     return fig
 
@@ -198,13 +203,13 @@ def combine_loans_and_state_taxes(loans: pd.DataFrame, state_taxes: pd.DataFrame
 
 def find_disposable_income(loans_with_state_taxes: pd.DataFrame):
     FEDERAL_BRACKETS = [
-     (0.1, 0), 
-     (0.12, 11000), 
-     (0.22, 44725), 
-     (0.24, 95375), 
-     (0.32, 182100),
-     (0.35, 231251),
-     (0.37, 578125)
+        (0.10, 0),
+        (0.12, 11000),
+        (0.22, 44725),
+        (0.24, 95375),
+        (0.32, 182100),
+        (0.35, 231251),
+        (0.37, 578125),
     ]
     df = loans_with_state_taxes.copy()
 
@@ -212,16 +217,12 @@ def find_disposable_income(loans_with_state_taxes: pd.DataFrame):
         lambda inc: tax_owed(float(inc), FEDERAL_BRACKETS)
     )
 
-    df["state_tax_owed"] = df.apply(
-        lambda r: tax_owed(float(r["annual_inc"]), r["brackets_list"])
-        if isinstance(r.get("brackets_list", None), list) and len(r["brackets_list"]) > 0
-        else 0.0,
-        axis=1
-    )
+    df["state_tax_owed"] = [
+        tax_owed(float(inc), bl) if isinstance(bl, list) and len(bl) > 0 else 0.0
+        for inc, bl in zip(df["annual_inc"], df["bracket_list"])
+    ]
 
-    df["disposable_income"] = (
-        df["annual_inc"] - df["federal_tax_owed"] - df["state_tax_owed"]
-    )
+    df["disposable_income"] = df["annual_inc"] - df["federal_tax_owed"] - df["state_tax_owed"]
     return df
 
 
@@ -231,20 +232,29 @@ def find_disposable_income(loans_with_state_taxes: pd.DataFrame):
 
 
 def aggregate_and_combine(loans, keywords, quantitative_column, categorical_column):
-    out = pd.DataFrame()
+    cats = loans[categorical_column].dropna().unique().tolist()
+    cats = sorted([c for c in cats if str(c) != "ANY"])
+    master_index = pd.Index(cats + ["Overall"], name=categorical_column)
+
+    out = pd.DataFrame(index=master_index)
 
     for kw in keywords:
-        mask = loans["emp_title"].str.contains(kw, na=False)
+        kw = kw.lower()
+        mask = loans["emp_title"].str.contains(kw, na=False, regex=False)
 
-        grouped = (loans.loc[mask]
-                          .groupby(categorical_column)[quantitative_column]
-                          .mean())
+        grp = (loans.loc[mask]
+                     .groupby(categorical_column)[quantitative_column]
+                     .mean())
 
         overall = loans.loc[mask, quantitative_column].mean()
 
-        s = pd.concat([grouped, pd.Series({"Overall": overall})])
+        s = pd.concat([grp, pd.Series({"Overall": overall})])
+        s = s.reindex(master_index)
+        s.index.name = categorical_column
+
         out[f"{kw}_mean_{quantitative_column}"] = s
 
+    out.index.name = categorical_column
     return out
 
 
@@ -254,15 +264,20 @@ def aggregate_and_combine(loans, keywords, quantitative_column, categorical_colu
 
 
 def exists_paradox(loans, keywords, quantitative_column, categorical_column):
-    #what is the clean solution?
     tbl = aggregate_and_combine(loans, keywords, quantitative_column, categorical_column)
-    return bool(
-        (tbl.iloc[:-1][f"{keywords[0]}_mean_{quantitative_column}"] >
-         tbl.iloc[:-1][f"{keywords[1]}_mean_{quantitative_column}"]).all()
-        and
-        tbl.iloc[-1][f"{keywords[0]}_mean_{quantitative_column}"] <
-        tbl.iloc[-1][f"{keywords[1]}_mean_{quantitative_column}"]
-    )
+    colA = f"{keywords[0]}_mean_{quantitative_column}"
+    colB = f"{keywords[1]}_mean_{quantitative_column}"
+
+    groups = tbl.iloc[:-1][[colA, colB]].dropna()
+    if groups.empty:
+        return False
+
+    a_gt_b_all = (groups[colA] > groups[colB]).all()
+    a_lt_b_all = (groups[colA] < groups[colB]).all()
+    overall_a_lt_b = tbl.iloc[-1][colA] < tbl.iloc[-1][colB]
+    overall_a_gt_b = tbl.iloc[-1][colA] > tbl.iloc[-1][colB]
+
+    return bool((a_gt_b_all and overall_a_lt_b) or (a_lt_b_all and overall_a_gt_b))
     
 def paradox_example(loans):
     #pairs to try

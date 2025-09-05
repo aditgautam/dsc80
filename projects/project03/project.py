@@ -48,14 +48,23 @@ def get_book(url):
 
 
 START = '\x02'
-END = '\x03'
-_WORD_OR_PUNCT = re.compile(r"[A-Za-z0-9_]+|[^\sA-Za-z0-9_]")
+END   = '\x03'
+
+_WORD_OR_PUNCT = re.compile(r"\w+|[^\s\w]", flags=re.UNICODE)
+_PARA_SEP      = re.compile(r"(?:[^\S\n]*\n){2,}[^\S\n]*")
 
 def tokenize(book_string):
-    s = book_string.replace("\r\n", "\n").replace("\r", "\n")
-    paras = [p for p in re.split(r"\n{2,}", s) if re.search(r"\S", p)]
+    s = (book_string
+         .replace("\r\n", "\n")
+         .replace("\r", "\n")
+         .replace("\u2028", "\n")
+         .replace("\u2029", "\n")
+         .replace("\u0085", "\n"))
+
+    paras = [p for p in _PARA_SEP.split(s) if re.search(r"\S", p)]
     if not paras:
         return [START, END]
+
     out = []
     for p in paras:
         out.append(START)

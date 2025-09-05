@@ -300,35 +300,30 @@ def z_score(ser: pd.Series) -> pd.Series:
 
 def add_post_redemption(grades_combined: pd.DataFrame) -> pd.DataFrame:
     out = grades_combined.copy()
-    
-    midterm_max = pd.to_numeric(out['Midterm - Max Points'], errors='coerce')
-    midterm_score = pd.to_numeric(out['Midterm'], errors='coerce')
-    pre_redemption_proportions = (midterm_score / midterm_max).replace(
-        [np.inf, -np.inf], np.nan
-    )
-    out['Midterm Score Pre-Redemption'] = pre_redemption_proportions
-    
-    redemption_scores = out['Raw Redemption Score']
-    redemption_z_scores = z_score(redemption_scores)
-    midterm_proportions_for_z = pre_redemption_proportions.fillna(0)
-    midterm_z_scores = z_score(midterm_proportions_for_z)
-    
-    midterm_mean = midterm_proportions_for_z.mean()
-    midterm_std = midterm_proportions_for_z.std(ddof=0)
-    
-    new_midterm_proportions = pre_redemption_proportions.copy()
 
-    improved_students = redemption_z_scores > midterm_z_scores
+    mid = pd.to_numeric(out['Midterm'], errors='coerce')
+    mx  = pd.to_numeric(out['Midterm - Max Points'], errors='coerce')
+    pre = (mid / mx).replace([np.inf, -np.inf], np.nan)
+    out['Midterm Score Pre-Redemption'] = pre
+
+    rr   = pd.to_numeric(out['Raw Redemption Score'], errors='coerce')
+    rr_z = z_score(rr)
     
-    new_scores_z = redemption_z_scores[improved_students]
-    new_scores = new_scores_z * midterm_std + midterm_mean
-    
-    new_midterm_proportions.loc[improved_students] = new_scores
-    
-    new_midterm_proportions = new_midterm_proportions.fillna(0)
-    
-    out['Midterm Score Post-Redemption'] = new_midterm_proportions.clip(upper=1.0)
-    
+    pre_for_stats = pre.fillna(0.0)
+    mid_z = z_score(pre_for_stats)
+    mu    = pre_for_stats.mean()
+    sd    = pre_for_stats.std(ddof=0)
+
+    eps = 1e-12
+    eligible = pre.notna() & (pre < 1.0 - eps)
+    back = rr_z * sd + mu
+
+    improved = eligible & (rr_z > mid_z + eps) & (back > pre + eps)
+
+    post = pre.copy()
+    post.loc[improved] = back.loc[improved]
+
+    out['Midterm Score Post-Redemption'] = post.fillna(0.0).clip(lower=0.0, upper=1.0)
     return out
 
 # ---------------------------------------------------------------------
@@ -381,13 +376,14 @@ def proportion_improved(grades_combined: pd.DataFrame) -> float:
 # ---------------------------------------------------------------------
 
 
-def section_most_improved(grades_analysis):
-    improved = (grades_analysis['Letter Grade Post-Redemption'] 
-                > grades_analysis['Letter Grade Pre-Redemption'])
-    
-    proportions = improved.groupby(grades_analysis['Section']).mean()
-    
-    return proportions.idxmax()
+def section_most_improved(grades_analysis: pd.DataFrame):
+    rank = {'F':0,'D':1,'C':2,'B':3,'A':4}
+    pre  = grades_analysis['Letter Grade Pre-Redemption'].map(rank)
+    post = grades_analysis['Letter Grade Post-Redemption'].map(rank)
+
+    improved = post > pre
+    props = improved.groupby(grades_analysis['Section']).mean()
+    return props.idxmax()
     
 def top_sections(grades_analysis, t, n):
     final_scores = pd.to_numeric(grades_analysis['Final'], errors="coerce")
@@ -456,11 +452,22 @@ def letter_grade_heat_map(grades_analysis):
         prop.values,
         x=prop.columns,
         y=prop.index,
-        labels={'x': 'Section', 'y': 'Letter Grade Post-Redemption', 'color': 'Proportion'},
+        labels={'x': 'Section', 'y': 'Letter Grade Post-Redemption', 'color': 'color'},
         color_continuous_scale='Blues',
         zmin=0.0, zmax=1.0
     )
     fig.update_layout(title='Distribution of Letter Grades by Section')
+
+    fig.update_yaxes(categoryorder='array', categoryarray=grade_order, title='Letter Grade Post-Redemption')
+    fig.update_xaxes(categoryorder='array', categoryarray=section_order, title='Section')
+
+    fig.update_layout(
+    coloraxis=dict(
+        colorscale='Blues',
+        cmin=0, cmax=1,
+        colorbar=dict(tick0=0, dtick=0.1)
+    )
+)
 
     return fig
 
